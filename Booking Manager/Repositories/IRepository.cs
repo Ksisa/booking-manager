@@ -1,6 +1,6 @@
 ﻿namespace Booking_Manager.Repositories
 {
-    internal interface IRepository<TEntity, TIdType>
+    public interface IRepository<TEntity, TIdType> where TIdType : notnull
     {
         public List<TEntity> Get();
 

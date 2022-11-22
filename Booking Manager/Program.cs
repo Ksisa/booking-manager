@@ -6,10 +6,9 @@ namespace Booking_Manager
     {
         static void Main(string[] args)
         {
-            var guestRepository = new GuestRepository();
             var roomRepository = new RoomRepository(new int[] { 101, 102, 103, 201, 202 });
 
-            IBookingManager bm = new BookingManager(roomRepository, guestRepository);// create your manager here; 
+            IBookingManager bm = new BookingManager(roomRepository);// create your manager here; 
             var today = new DateTime(2012, 3, 28);
             Console.WriteLine(bm.IsRoomAvailable(101, today)); // outputs true 
             bm.AddBooking("Patel", 101, today);
