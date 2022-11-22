@@ -7,58 +7,75 @@ namespace Booking_Manager
 {
     public class BookingManager : IBookingManager
     {
-        private readonly IRepository<Room, int> _RoomRepository;
+        private readonly IRepository<Room, int> _Repository;
 
-        private QueueManager<int> _QueueManager;
+        private ConcurrentDictionary<int, object> _RoomLocks;
 
-        private ConcurrentDictionary<int, Task> _Queue = new();
+        private object GetRoomLock(int roomNumber) => _RoomLocks.GetOrAdd(roomNumber, new { });
 
-        public BookingManager(IRepository<Room, int> roomRepository)
+        public BookingManager(IRepository<Room, int> repository)
         {
-            this._RoomRepository = roomRepository;
-            this._QueueManager = new();
+            this._Repository = repository;
+            this._RoomLocks = new();
         }
 
         public void AddBooking(string guest, int room, DateTime date)
         {
-            this._QueueManager.AddToQueue(room, new Task(() =>
+            var roomLock = this.GetRoomLock(room);
+            lock (roomLock)
             {
                 Room _room = this.GetRoomAndAssert(room);
-                if (!this.TemporalIsRoomAvailable(_room, date.Date))
+
+                if (!this.IsRoomAvailable(_room, date.Date))
                 {
                     throw new RoomUnavailableException(_room, date.Date);
                 }
 
                 Guest _guest = new Guest(guest);
-                    
+
                 Booking newBooking = new Booking(_guest, _room, date.Date);
                 _room.Bookings.Add(newBooking);
                 _guest.Bookings.Add(newBooking);
 
-                this._RoomRepository.Save(_room);
-            }));
+                lock (this._Repository)
+                {
+                    this._Repository.Save(_room);
+                }
+            }
         }
 
-        public bool IsRoomAvailable(int room, DateTime date) => this.IsRoomAvailable(this.GetRoomAndAssert(room), date.Date);
-
-        public bool IsRoomAvailable(Room room, DateTime date)
+        public bool IsRoomAvailable(int room, DateTime date)
         {
-            this._QueueManager.WaitForQueueToFinish(room.Number);
-            return this.TemporalIsRoomAvailable(room, date);
+            var roomLock = this.GetRoomLock(room);
+
+            lock (roomLock)
+            {
+                return this.IsRoomAvailable(this.GetRoomAndAssert(room), date.Date);
+            }
         }
 
-        /// Checks availability without waiting for the queue to finish.
-        private bool TemporalIsRoomAvailable(Room room, DateTime date) => !room.Bookings.Select(b => b.Date).Contains(date.Date);
+        public bool IsRoomAvailable(Room room, DateTime date) => !room.Bookings.Select(b => b.Date).Contains(date.Date);
 
-        public IEnumerable<int> getAvailableRooms(DateTime date) => this._RoomRepository.Get()
-            .Where(r => !r.Bookings
-                .Select(b => b.Date)
-                .Contains(date.Date))
-            .Select(r => r.Number);
+
+        public IEnumerable<int> getAvailableRooms(DateTime date)
+        {
+            lock (this._Repository)
+            {
+                return this._Repository.GetAll()
+                .Where(r => !r.Bookings
+                    .Select(b => b.Date)
+                    .Contains(date.Date))
+                .Select(r => r.Number);
+            }
+        }
 
         private Room GetRoomAndAssert(int room)
         {
-            Room? _room = this._RoomRepository.Get(room);
+            Room? _room;
+            lock (this._Repository)
+            {
+                _room = this._Repository.Get(room);
+            }
 
             if (_room == null)
             {

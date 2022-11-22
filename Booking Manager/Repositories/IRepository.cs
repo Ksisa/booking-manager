@@ -2,7 +2,7 @@
 {
     public interface IRepository<TEntity, TIdType> where TIdType : notnull
     {
-        public List<TEntity> Get();
+        public List<TEntity> GetAll();
 
         public TEntity? Get(TIdType id);
 
