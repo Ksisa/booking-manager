@@ -1,6 +1,7 @@
 ﻿using Booking_Manager.Entities;
 using Booking_Manager.Exceptions;
 using Booking_Manager.Repositories;
+using System.Collections.Concurrent;
 
 namespace Booking_Manager
 {
@@ -10,6 +11,8 @@ namespace Booking_Manager
 
         private readonly IRepository<Guest, string> _GuestRepository;
 
+        private Dictionary<int, Queue<Task>> _Queue = new();
+
         public BookingManager(IRepository<Room, int> roomRepository, IRepository<Guest, string> guestRepository)
         {
             this._RoomRepository = roomRepository;
@@ -18,36 +21,42 @@ namespace Booking_Manager
 
         public void AddBooking(string guest, int room, DateTime date)
         {
-            Room _room = this.GetRoomAndAssert(room);
-
-            if (!this.IsRoomAvailable(room, date))
+            this._Queue[room].Enqueue(Task.Run(() =>
             {
-                throw new RoomUnavailableException(room, date);
-            }
+                this._Queue[room].Peek().Wait();
+                Room _room = this.GetRoomAndAssert(room);
 
-            Guest? _guest = this._GuestRepository.Get(guest);
-            if(_guest == null)
-            {
-                Guest newGuest = new Guest(guest);
-                _guest = newGuest;
-            }
+                if (!this.IsRoomAvailable(room, date))
+                {
+                    throw new RoomUnavailableException(room, date);
+                }
 
-            Booking newBooking = new Booking(_guest, _room, date);
-            _room.Bookings.Add(newBooking);
-            _guest.Bookings.Add(newBooking);
+                Guest? _guest = this._GuestRepository.Get(guest);
+                if (_guest == null)
+                {
+                    Guest newGuest = new Guest(guest);
+                    _guest = newGuest;
+                }
 
-            this._GuestRepository.Save(_guest);
-            this._RoomRepository.Save(_room);
+                Booking newBooking = new Booking(_guest, _room, date);
+                _room.Bookings.Add(newBooking);
+                _guest.Bookings.Add(newBooking);
+
+                this._GuestRepository.Save(_guest);
+                this._RoomRepository.Save(_room);
+
+                this._Queue[room].Dequeue();
+            }));
         }
 
-        public bool IsRoomAvailable(int room, DateTime date) => this.IsRoomAvailable(this.GetRoomAndAssert(room), date);
+        public bool IsRoomAvailable(int room, DateTime date) => this.IsRoomAvailable(this.GetRoomAndAssert(room), date.Date);
 
         public bool IsRoomAvailable(Room room, DateTime date) => room.Bookings.Select(b => b.Date).Contains(date.Date);
 
         public IEnumerable<int> getAvailableRooms(DateTime date) => this._RoomRepository.Get()
             .Where(r => !r.Bookings
                 .Select(b => b.Date)
-                .Contains(date))
+                .Contains(date.Date))
             .Select(r => r.Number);
 
         private Room GetRoomAndAssert(int room)
