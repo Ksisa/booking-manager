@@ -4,7 +4,7 @@ using Booking_Manager.Managers;
 using Booking_Manager.Repositories;
 using NUnit.Framework;
 
-namespace Booking_Manager_Tests1
+namespace Booking_Manager_Tests
 {
     /// <summary>
     /// Test suite for testing <see cref="Booking_Manager"/>'s <see cref="BookingManager"/>
